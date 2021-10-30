@@ -1,9 +1,10 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 from functools import reduce
+import numpy as np
 
-showGraph = False
-to_csv = True
+showGraph = True
+to_csv = not(showGraph)
 dataPath = r'../data/'
 resultPath = r'../result/'
 
@@ -29,15 +30,30 @@ def categoricalComposition(columnName, locationData, failureData):
     count = failureData[columnName].count()
     result['failure size / failure sizeTotal'] = result['failure size'] / count
 
-    output = totalresult.reset_index().merge(result.reset_index(), on=columnName)
+    dataframes = [totalresult, result]
+    output = pd.concat(dataframes, axis=1)
     output['failure size / (size + failure size)'] = output['failure size'] / output['size']
 
     if to_csv:
         output.to_csv(resultPath + 'composition' + '_' + columnName + '.csv')
 
     if showGraph:
-        # result.plot.pie(y='sizePercentage')
+        plot = output['size / sizeTotal'].plot.pie(subplots=True, layout=(1,1), figsize=(10,10),autopct='%1.1f%%')
         plt.show()
+        plot = output['failure size / failure sizeTotal'].plot.pie(subplots=True, layout=(1,1), figsize=(10,10), autopct='%1.1f%%')
+        plt.show()
+
+# to be completed
+def modelAppComposition(locationData, failureData):
+    # this function intent to analyse composition of model to app data
+    
+    totalresult = locationData.groupby(['model', 'app']).size().to_frame('size')
+    #totalcount = locationData[['model', 'app']].count()
+    #totalresult['size / sizeTotal'] = totalresult['size'] / totalcount
+
+    result = failureData.groupby(['model', 'app']).size().to_frame('failure size')
+    #count = failureData[['model', 'app']].count()
+    #result['failure size / failure sizeTotal'] = result['failure size'] / count
 
 def extractSMARTHelper(df, postfix):
     smart_df = pd.DataFrame(df, columns=colList)
@@ -54,9 +70,6 @@ def extractSMARTHelper(df, postfix):
 
     return pd.concat(dataframes, axis=1)
 
-    # old code
-    #return reduce(lambda  left,right: pd.merge(left,right,on=['index']), dataframes)
-
 def numComposition(smartData, failureData):
     # this function intent to analyse composition of numerial data
     print("Processing SMART composition")
@@ -69,6 +82,16 @@ def numComposition(smartData, failureData):
 
     if to_csv:
         output.to_csv(resultPath + 'composition' + '_' + 'SMART' + '.csv')
+        
+    if showGraph and False:
+        ax = failureData['n_5'].sort_values().reset_index(drop=True).plot()
+        failureData['n_183'].sort_values().reset_index(drop=True).plot(ax=ax)
+        failureData['n_184'].sort_values().reset_index(drop=True).plot(ax=ax)
+        failureData['n_187'].sort_values().reset_index(drop=True).plot(ax=ax)
+        failureData['n_195'].sort_values().reset_index(drop=True).plot(ax=ax)
+        failureData['n_197'].sort_values().reset_index(drop=True).plot(ax=ax)
+        failureData['n_199'].sort_values().reset_index(drop=True).plot(ax=ax)
+        plt.show()
 
 def categoricalSMART(columnName, smartData, failureData):
     # this function intent to analyse SMART of each instance of the categorical data
@@ -77,38 +100,74 @@ def categoricalSMART(columnName, smartData, failureData):
 
     smart_df = smartData.groupby(columnName)
     smart_fail_df = failureData.groupby(columnName)
-    temList = []
-    list = []
+    cateDataFrameList = []
+    catelist = []
+    
     # assume both smartData and failureData share the same 'columnName' categorical variable
     for key, item in smart_df:
-        # print(key)
-        # print(smart_df.get_group(key))
-        # print(smart_fail_df.get_group(key))
-        fail_result = extractSMARTHelper(smart_df.get_group(key), '')
-        result = extractSMARTHelper(smart_df.get_group(key), ' (functional)')
-        #output = fail_result.merge(result, on='index')
-        output = pd.concat([fail_result, result], axis=1)
-        #print(output)
-        temList.append(output)
-        list.append(key)
-        print(len(temList))
-    print(temList)
-    print(list)
+        result = extractSMARTHelper(smart_df.get_group(key), '')
+        functional_result = extractSMARTHelper(smart_df.get_group(key), ' (functional)')
+        
+        dataFrame = pd.concat([result, functional_result], axis=1)
+        
+        cateDataFrameList.append(dataFrame)
+        catelist.append(key)
     
-    df = pd.concat(temList, keys=list)
-    print(df)
+    # combine the dataframe together
+    output = pd.concat(cateDataFrameList, keys=catelist)
     
     if to_csv:
-        df.to_csv(resultPath + columnName + '\'s ' + 'group ' + 'SMART' + '.csv')
+        output.to_csv(resultPath + 'group_SMART_' + columnName + '.csv')
     
-    # tem = pd.DataFrame(df.get_group('A1'), columns=colList)
-    # result = extractsmarthelper(collist, smartdata, '')
-    # print(result)
-    # result = extractsmarthelper(collist, df.get_group('a1'), '')
-    # print(result)
-    # result = extractsmarthelper(collist, df.get_group('a2'), '')
-    # print(result)
+    if showGraph :
+        for column in colList:
+            fig, ax = plt.subplots()
+            for key, item in smart_fail_df:
+                df = smart_fail_df.get_group(key)[column].dropna().sort_values().reset_index(drop=True)
+                df.to_frame().set_index(np.linspace(0.0,1.0,df.count())).rename(columns={column:column + ' ' +key}).plot(ax=ax)
+            df = failureData[column].dropna().sort_values().reset_index(drop=True)
+            df.to_frame().set_index(np.linspace(0.0,1.0,df.count())).rename(columns={column:column + ' ' + 'all'}).plot(ax=ax)
+            plt.show()
+            
+            fig, ax = plt.subplots()
+            for key, item in smart_df:
+                df = smart_df.get_group(key)[column].dropna().sort_values().reset_index(drop=True)
+                df.to_frame().set_index(np.linspace(0.0,1.0,df.count())).rename(columns={column:column + ' ' +key+ '(f)'}).plot(ax=ax)
+            df = smartData[column].dropna().sort_values().reset_index(drop=True)
+            df.to_frame().set_index(np.linspace(0.0,1.0,df.count())).rename(columns={column:column + ' ' + 'all'+ '(f)'}).plot(ax=ax)
+            plt.show()
 
+def partialCategoricalSMART(columnName, failureData):
+    # this function intent to analyse SMART of each instance of the categorical data
+    # this function is provided because 'app' does not have functional data in all there dataset provided
+    print("Processing", columnName + "'s", "SMART")
+
+    smart_fail_df = failureData.groupby(columnName)
+    cateDataFrameList = []
+    catelist = []
+    
+    # assume both smartData and failureData share the same 'columnName' categorical variable
+    for key, item in smart_fail_df:
+        result = extractSMARTHelper(smart_fail_df.get_group(key), '')
+        
+        cateDataFrameList.append(result)
+        catelist.append(key)
+    
+    # combine the dataframe together
+    output = pd.concat(cateDataFrameList, keys=catelist)
+    
+    if to_csv:
+        output.to_csv(resultPath + 'group_SMART_' + columnName + '.csv')
+        
+    if showGraph and False:
+        for column in colList:
+            fig, ax = plt.subplots()
+            for key, item in smart_fail_df:
+                df = smart_fail_df.get_group(key)[column].dropna().sort_values().reset_index(drop=True)
+                df.to_frame().set_index(np.linspace(0.0,1.0,df.count())).rename(columns={column:column + ' ' +key}).plot(ax=ax)
+            df = failureData[column].dropna().sort_values().reset_index(drop=True)
+            df.to_frame().set_index(np.linspace(0.0,1.0,df.count())).rename(columns={column:column + ' ' + 'all'}).plot(ax=ax)
+            plt.show()
 
 # In case the program is running in conda, check for '__main__'
 # to ensure it run.
@@ -125,6 +184,7 @@ if __name__ == '__main__':
 
     # extract relation between differenct model and application
     categoricalSMART('model', smartData, failureData)
+    partialCategoricalSMART('app', failureData)
 
     # print(result)
 
