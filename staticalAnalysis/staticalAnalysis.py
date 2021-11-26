@@ -1,8 +1,12 @@
+import sys
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 
-showGraph = False
+try:
+    showGraph = sys.argv[1] == 'graph'
+except IndexError:
+    showGraph = False
 to_csv = not(showGraph)
 dataPath = r'../data/'
 resultPath = r'../result/'
@@ -233,9 +237,14 @@ def spatialCategoricalFailure(failureData, columnName):
         ['machine_room_id', 'rack_id', 'node_id', columnName]).sort_index()
 
     failure_group_c['count'] = failure_group_c.groupby(level=[0, 1, 2, 3]).size()
-    # discard group with small size, not needed for now
     # failure_group_c = failure_group_c[(failure_group_c['count'] > 1)]
-    output = failure_group_c.reset_index().drop_duplicates()
+    failure_group_c = failure_group_c.reset_index().drop_duplicates()
+
+    failure_group_c = failure_group_c.set_index(
+        ['machine_room_id', 'rack_id', 'node_id']).sort_index()
+    failure_group_c['group_size'] = failure_group_c.groupby(level=[0, 1, 2])['count'].sum()
+    # extract group with at least group size 10
+    output = failure_group_c[failure_group_c['group_size'] >= 10]
 
     if to_csv:
         global documentPrefix
@@ -243,6 +252,10 @@ def spatialCategoricalFailure(failureData, columnName):
             'spatial_categorical_failure_' + columnName + '.csv'
         output.to_csv(document_name)
         documentPrefix += 1
+
+    if showGraph:
+        output.reset_index().groupby(columnName)['count'].sum().plot.pie(autopct='%1.1f%%')
+        plt.show()
 
 
 def spatialSMARTFailure(failureData):
@@ -256,13 +269,17 @@ def spatialSMARTFailure(failureData):
 
     failure_group_s['count'] = failure_group_s.groupby(level=[0, 1, 2]).size()
     # using failure_group_s as baseline, check for group with at least a number of disk using correlation
-    list = []
-    for i in range(1, 16):
-        target = failure_group_s[failure_group_s['count'] == i]
-        result = failure_group_s.corrwith(target, method='pearson')
-        result = result.rename('SMART(size='+str(i)+')').rename_axis('SMART')
-        list.append(result)
-    output = pd.concat(list, axis=1)
+    outputlist = []
+    for methodName in ['pearson', 'kendall']:
+        list = []
+        for i in range(1, 16):
+            target = failure_group_s[failure_group_s['count'] == i]
+            result = failure_group_s.corrwith(target, method=methodName)
+            result = result.rename('SMART(size='+str(i)+')').rename_axis('SMART')
+            list.append(result)
+        output = pd.concat(list, axis=1)
+        outputlist.append(output)
+    output = pd.concat(outputlist)
 
     if to_csv:
         global documentPrefix
@@ -290,8 +307,8 @@ if __name__ == '__main__':
     categoricalSMART('model', smartData, failureData)
     partialCategoricalSMART('app', failureData)
 
-    # part 3.2 Spatial analysis
-    # 3.2.1 spatialFailureGroup
+    # part 3.2 spatial analysis
+    # 3.2.1 spatialfailuregroup
     spatialFailureGroup(failureData)
     # 3.2.2
     spatialCategoricalFailure(failureData, 'model')
