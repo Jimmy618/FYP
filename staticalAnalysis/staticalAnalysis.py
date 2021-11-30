@@ -188,7 +188,7 @@ def partialCategoricalSMART(columnName, failureData):
 
 
 def spatialFailureGroup(failureData):
-    print("Processing", 'Spatial failure group')
+    print("Processing", 'Spatial failure distribution')
     # idea: particular disk position may cause more failure due to moisture, heat, ...
     #       so find out failure distribution by *_id
     failure_group = failureData.set_index(['machine_room_id', 'rack_id', 'node_id']).sort_index()
@@ -289,6 +289,72 @@ def spatialSMARTFailure(failureData):
         documentPrefix += 1
 
 
+def temporalFailureDistribution(failureData, timeList, smallTimeList):
+    print("Processing", 'Temporal failure distribution')
+    dropList = ['model', 'failure', 'app', 'disk_id', 'node_id', 'rack_id', 'machine_room_id']
+    target = failureData.drop(dropList, axis=1)
+    target['failure_time'] = pd.to_datetime(target['failure_time'])
+    target = target.set_index(pd.DatetimeIndex(target['failure_time']))
+
+    outputlist = []
+    for time in timeList:
+        result = target.groupby(pd.Grouper(freq=time)).size()
+        result = result.rename('Time period: ' + time)
+        outputlist.append(result)
+    timeListoutput = pd.concat(outputlist, axis=1)
+
+    outputlist = []
+    for smallTime in smallTimeList:
+        result = target.groupby(pd.Grouper(freq=smallTime)
+                                ).size().value_counts().sort_index().drop(0)
+        result = result.rename('Time period: ' + smallTime
+                               + ' Occurrence').rename_axis('Time period: ' + smallTime + ' Count')
+        outputlist.append(result)
+    smallTimeListoutput = pd.concat(outputlist, axis=1)
+
+    if to_csv:
+        global documentPrefix
+        document_name = resultPath + str(documentPrefix) + '_' + \
+            'temporal_failure_distribution.csv'
+        timeListoutput.to_csv(document_name)
+        smallTimeListoutput.to_csv(document_name, mode='a')
+        documentPrefix += 1
+
+    if showGraph:
+        timeListoutput['Time period: D'].plot()
+        plt.show()
+        smallTimeListoutput['Time period: H Occurrence'].dropna().plot.bar()
+        plt.show()
+
+
+def temporalSMARTfailure(failureData):
+    print("Processing", 'Temporal SMART failure group')
+    dropList = ['model', 'failure', 'app', 'disk_id', 'node_id', 'rack_id', 'machine_room_id']
+    targetDF = failureData.drop(dropList, axis=1)
+    targetDF['failure_time'] = pd.to_datetime(targetDF['failure_time']).round('min')
+    targetDF = targetDF.set_index(pd.DatetimeIndex(targetDF['failure_time']))
+    targetDF = targetDF.drop('failure_time', axis=1)
+
+    targetDF['count'] = targetDF.groupby(pd.Grouper(freq='min')).size()
+
+    outputlist = []
+    for methodName in ['pearson']:
+        list = []
+        for key, group in targetDF.groupby('count'):
+            result = targetDF.corrwith(group.drop('count', axis=1), method=methodName)
+            result = result.rename('SMART(size=' + str(key) + ')').rename_axis('SMART')
+            list.append(result)
+        output = pd.concat(list, axis=1)
+        outputlist.append(output)
+
+    if to_csv:
+        global documentPrefix
+        document_name = resultPath + str(documentPrefix) + '_' + \
+            'temporal_SMART_failure.csv'
+        outputlist[0].to_csv(document_name)
+        documentPrefix += 1
+
+
 # In case the program is running in conda, check for '__main__'
 # to ensure it run.
 if __name__ == '__main__':
@@ -315,5 +381,9 @@ if __name__ == '__main__':
     spatialCategoricalFailure(failureData, 'app')
     # 3.2.3
     spatialSMARTFailure(failureData)
+
+    # part 4 temporal analysis
+    temporalFailureDistribution(failureData, ['Y', 'Q', 'M', 'W', 'D'], ['H', 'min'])
+    temporalSMARTfailure(failureData)
 
     print("Analysis finished.")
