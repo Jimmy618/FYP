@@ -1,6 +1,8 @@
+import pandas as pd
 import torch
 from torch.utils.data import Dataset, DataLoader
-import pandas as pd
+from torch import nn
+from torch.optim import SGD
 # from torchvision import transforms, utils
 
 # prepate dataset:
@@ -15,7 +17,8 @@ import pandas as pd
 # incase the program is running in conda, check for '__main__'
 # to ensure it run.
 if __name__ == '__main__':
-    batch_size = 4
+    torch.autograd.set_detect_anomaly(True)
+    batch_size = 32
 
     print("Preparing dataset")
     dataPath = r'../data/'
@@ -57,10 +60,17 @@ if __name__ == '__main__':
         dataf[colName] = failureData[colName]
     dataf['health'] = 0
 
-    data = pd.concat([datah, dataf]).reset_index(drop=True)
+    data = pd.concat([datah, dataf])  # .reset_index(drop=True)
     data['model'] = data['model'].replace(
         ['A1', 'A2', 'A3', 'A4', 'A5', 'A6', 'B1', 'B2', 'B3', 'C1', 'C2'],
         [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+    # data = data.astype('float')
+    data = data.fillna(-1)
+    data = data.astype(float)
+
+    # train, test = random_split(data, [3, len(data.index)-3])
+    train = data.sample(frac=0.8, random_state=200).reset_index(drop=True)
+    test = data.drop(train.index).sample(frac=1.0).reset_index(drop=True)
 
     # csvDataset is modified from pytorch data loading tutorial
     # source: https://pytorch.org/tutorials/beginner/data_loading_tutorial.html
@@ -93,7 +103,75 @@ if __name__ == '__main__':
 
             return sample, label
 
-    data_set = ssdDataset(data)
-    data_loader = DataLoader(data_set, batch_size=batch_size, shuffle=False)
+    # https://github.com/christianversloot/machine-learning-articles/blob/main/creating-a-multilayer-perceptron-with-pytorch-and-lightning.md
+    class MLP(nn.Module):
+        '''
+        Multilayer Perceptron.
+        '''
 
-    #inputs, classes = next(iter(data_loader))
+        def __init__(self):
+            super().__init__()
+            self.layers = nn.Sequential(
+              nn.Flatten(),
+              nn.Linear(32, 64),
+              nn.ReLU(),
+              nn.Linear(64, 32),
+              nn.ReLU(),
+              nn.Linear(32, 10),
+              nn.ReLU(),
+              nn.Linear(10, 1),
+              nn.Sigmoid()
+            )
+
+        def forward(self, x):
+            '''Forward pass'''
+            return self.layers(x)
+
+    # data_set = ssdDataset(data)
+    # data_loader = DataLoader(data_set, batch_size=batch_size, shuffle=False)
+    # inputs, classes = next(iter(data_loader))
+    train_set = ssdDataset(train)
+    train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True)
+    test_set = ssdDataset(test)
+    test_loader = DataLoader(test_set, batch_size=1024, shuffle=True)
+    # define the network
+    model = MLP()
+    # model.double()
+
+    loss_function = nn.BCELoss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
+
+    # Run the training loop
+    for epoch in range(0, 1):  # 5 epochs at maximum
+        # Print epoch
+        print(f'Starting epoch {epoch+1}')
+        # Set current loss value
+        current_loss = 0.0
+        # Iterate over the DataLoader for training data
+        for i, data in enumerate(train_loader, 0):
+            # Get inputs
+            inputs, targets = data
+
+            # Zero the gradients
+            optimizer.zero_grad()
+
+            # Perform forward pass
+            outputs = model(inputs.float())
+
+            # Compute loss
+            loss = loss_function(outputs, targets.unsqueeze(1).float())
+
+            # Perform backward pass
+            loss.backward()
+
+            # Perform optimization
+            optimizer.step()
+
+            # Print statistics
+            current_loss += loss.item()
+            if i % 500 == 499:
+                print('Loss after mini-batch %5d: %.3f' % (i + 1, current_loss / 500))
+                current_loss = 0.0
+
+    # Process is complete.
+    print('Training process has finished.')
