@@ -1,9 +1,7 @@
-import csv  # python built in module for processing csv file
 import torch
-from torch.utils.data import Dataset  # , DataLoader
+from torch.utils.data import Dataset, DataLoader
 import pandas as pd
 # from torchvision import transforms, utils
-# import panda
 
 # prepate dataset:
 # forget locaiton.csv, just use ssd_failure_tag.csv as failed and 20191231.csv as functional
@@ -17,6 +15,9 @@ import pandas as pd
 # incase the program is running in conda, check for '__main__'
 # to ensure it run.
 if __name__ == '__main__':
+    batch_size = 4
+
+    print("Preparing dataset")
     dataPath = r'../data/'
     smartData = pd.read_csv(dataPath + '20191231.csv')
     failureData = pd.read_csv(dataPath + 'ssd_failure_tag.csv')
@@ -56,52 +57,43 @@ if __name__ == '__main__':
         dataf[colName] = failureData[colName]
     dataf['health'] = 0
 
-    data = pd.concat([datah, dataf])
+    data = pd.concat([datah, dataf]).reset_index(drop=True)
+    data['model'] = data['model'].replace(
+        ['A1', 'A2', 'A3', 'A4', 'A5', 'A6', 'B1', 'B2', 'B3', 'C1', 'C2'],
+        [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
 
     # csvDataset is modified from pytorch data loading tutorial
     # source: https://pytorch.org/tutorials/beginner/data_loading_tutorial.html
 
-    class csvDataset(Dataset):
+    class ssdDataset(Dataset):
         """testing csv dataset."""
 
-        def __init__(self, csv_file, transform=None):
+        def __init__(self, dataFrame, transform=None):
             """
             Args:
-            csv_file (string): Path to the csv file with annotations.
-            transform (callable, optional): Optional transform to be applied
-                on a sample.
+            dataFrame (panda dataFrame): source of ssd data, prepared.
+            transform (callable, optional): Optional transform to be applied on a sample.
             """
-            #self.csv = open(path, newline='')
-            # calculate csv length aka file count
-            self.csvLength = sum(1 for row in self.csv)
-            self.csv.seek(0)  # reset file pointer to starting position
+            self.dataFrame = dataFrame
             self.transform = transform
 
         def __len__(self):
-            return self.csvLength
+            return len(self.dataFrame.index)
 
         def __getitem__(self, idx):
-            if torch.istensor(idx):
+            if torch.is_tensor(idx):
                 idx = idx.tolist()
-
-            # extraction of data to be coded
+            #sample = self.dataFrame.loc[idx].drop(columns='health', level=0)
+            sample = self.dataFrame.loc[idx][colList[:-1]]
+            sample = torch.tensor(sample)
+            label = self.dataFrame.loc[idx]['health']
+            label = torch.tensor(label)
             if self.transform:
-                pass  # sample = self.transform(sample)
+                sample = self.transform(sample)
 
-        def close():
-            pass  # self.csv.close()
+            return sample, label
 
-    # with open(path, newline='') as csvfile:
-    #     csvReader = csv.reader(csvfile)
-    #     print(csvReader)
-    #     print(sum(1 for row in csvfile))
-    #     csvfile.seek(0)
-    #
-    #     i = 0
-    #     for row in csvReader:
-    #         print(row)
-    #         # print(row[0], row[1], row[2], row[3], row[4])
-    #
-    #         i += 1
-    #         if i == 10:
-    #             break
+    data_set = ssdDataset(data)
+    data_loader = DataLoader(data_set, batch_size=batch_size, shuffle=False)
+
+    #inputs, classes = next(iter(data_loader))
