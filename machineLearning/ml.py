@@ -10,6 +10,7 @@ from sklearn.metrics import roc_auc_score, accuracy_score
 from sklearn.metrics import accuracy_score, confusion_matrix
 from sklearn.model_selection import train_test_split
 from sklearn.model_selection import GridSearchCV
+from sklearn.tree import DecisionTreeClassifier
 
 import warnings
 
@@ -153,9 +154,49 @@ if __name__ == '__main__':
                     y_pred = knn.predict(x_test)
                     print(f"Accuracy: {accuracy_score(y_test, y_pred)*100: .2f} i = {i}")
 
+    # reference:
+    # https://scikit-learn.org/stable/modules/tree.html
+    if model == 'dt':
+        print("Training decision trees")
+
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore", message="dropping on a non-lexsorted multi-index without a level parameter may impact performance.")
+            warnings.filterwarnings(
+                "ignore", message="Feature names only support names that are all strings.")
+            decision_tree = DecisionTreeClassifier(
+                criterion='gini', random_state=0, min_samples_leaf=3, max_depth=9)
+            x = data.drop(columns=['health'])
+            y = data['health']
+            x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.2)
+
+            decision_tree.fit(x_train, y_train)
+            y_pred = decision_tree.predict(x_test)
+            tn, fp, fn, tp = confusion_matrix(y_test, y_pred, labels=[0, 1]).ravel()
+
+            print(f'Correct / Total : {tn + tp} / {tn+ fp+ fn+ tp}')
+            print(f"Accuracy: {accuracy_score(y_test, y_pred)*100: .2f} %")
+            print(f'False positive / Incorrect prediction: {fp}/{fp + fn}')
+            print(f'Percentage: {float(fp)/float(fp + fn)*100: .2f} %')
+            print(f'False negative / Incorrect prediction: {fn}/{fp + fn}')
+            print(f'Percentage: {float(fn)/float(fp + fn)*100: .2f} %')
+
+            hypertrain = True
+
+            if hypertrain:
+                for i in range(5, 11):
+                    decision_tree = DecisionTreeClassifier(
+                        criterion='gini', random_state=0, min_samples_leaf=i, max_depth=8)
+                    x = data.drop(columns=['health'])
+                    y = data['health']
+                    x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.2)
+
+                    decision_tree.fit(x_train, y_train)
+                    y_pred = decision_tree.predict(x_test)
+                    print(f"Accuracy: {accuracy_score(y_test, y_pred)*100: .2f} i = {i}")
+
     # ssdDataset is modified from pytorch data loading tutorial
     # source: https://pytorch.org/tutorials/beginner/data_loading_tutorial.html
-
     if model == 'mlp':
         class ssdDataset(Dataset):
             def __init__(self, dataFrame, transform=None):
@@ -196,16 +237,15 @@ if __name__ == '__main__':
                 super().__init__()
                 self.layers = nn.Sequential(
                   nn.Flatten(),
-                  nn.Linear(32, 64),
-                  nn.ReLU(),
-                  nn.Linear(64, 64),
-                  nn.ReLU(),
-                  nn.Linear(64, 64),
-                  nn.ReLU(),
-                  nn.Linear(64, 64),
-                  nn.ReLU(),
-                  nn.Linear(64, 1),
-                  nn.Sigmoid()  # sigmoid function to convert result to [0,1]
+                  nn.Linear(32, 128), nn.ReLU(),
+                  nn.Linear(128, 128), nn.ReLU(),
+                  nn.Linear(128, 128), nn.ReLU(),
+                  nn.Linear(128, 128), nn.ReLU(),
+                  nn.Linear(128, 128), nn.ReLU(),
+                  nn.Linear(128, 128), nn.ReLU(),
+                  nn.Linear(128, 128), nn.ReLU(),
+                  nn.Linear(128, 128), nn.ReLU(),
+                  nn.Linear(128, 1), nn.Sigmoid()  # sigmoid function to convert result to [0,1]
                 )
 
             def forward(self, x):
@@ -225,9 +265,9 @@ if __name__ == '__main__':
             model = MLP()
 
             loss_function = nn.BCELoss()
-            optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
+            optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
 
-            for epoch in range(0, 5):
+            for epoch in range(0, 3):
                 print(f'Starting epoch {epoch+1}')
                 current_loss = 0.0
                 for i, data in enumerate(train_loader, 0):
@@ -246,7 +286,7 @@ if __name__ == '__main__':
             torch.save(model.state_dict(), './model.pt')
 
         if not trainModel:
-            print('Calculating Accuracy')
+            print('Calculating Accuracy of mlp model')
 
             test = data.sample(frac=0.2).reset_index(drop=True)
             test_set = ssdDataset(test)
