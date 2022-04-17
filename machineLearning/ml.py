@@ -84,7 +84,7 @@ if __name__ == '__main__':
     # almost all example feeded to the machine are health data (health label = 1)
     # it will predict every example to be health and still have high accuracy
     # perform undersampling to balance number of data
-    datah = datah.sample(n=len(dataf.index)*2)
+    datah = datah.sample(n=len(dataf.index)*3)
 
     # join both data in one dataset
     data = pd.concat([datah, dataf])  # .reset_index(drop=True)
@@ -245,6 +245,14 @@ if __name__ == '__main__':
                   nn.Linear(128, 128), nn.ReLU(),
                   nn.Linear(128, 128), nn.ReLU(),
                   nn.Linear(128, 128), nn.ReLU(),
+                  nn.Linear(128, 128), nn.ReLU(),
+                  nn.Linear(128, 128), nn.ReLU(),
+                  nn.Linear(128, 128), nn.ReLU(),
+                  nn.Linear(128, 128), nn.ReLU(),
+                  nn.Linear(128, 128), nn.ReLU(),
+                  nn.Linear(128, 128), nn.ReLU(),
+                  nn.Linear(128, 128), nn.ReLU(),
+                  nn.Linear(128, 128), nn.ReLU(),
                   nn.Linear(128, 1), nn.Sigmoid()  # sigmoid function to convert result to [0,1]
                 )
 
@@ -254,7 +262,7 @@ if __name__ == '__main__':
 
         if trainModel:
             print("Training Multilayer Perceptron")
-            train_batch_size = 128
+            train_batch_size = 512
             train = data.sample(frac=0.8).reset_index(drop=True)
             # train = data.reset_index(drop=True)
             samples_weight = [1.1 if row['model'] == 9 else 1 for index, row in train.iterrows()]
@@ -288,7 +296,7 @@ if __name__ == '__main__':
         if not trainModel:
             print('Calculating Accuracy of mlp model')
 
-            test = data.sample(frac=0.2).reset_index(drop=True)
+            test = data.sample(frac=0.5).reset_index(drop=True)
             test_set = ssdDataset(test)
             test_loader = DataLoader(test_set, batch_size=1024, shuffle=True)
 
